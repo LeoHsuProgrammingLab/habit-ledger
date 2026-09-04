@@ -1,15 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
-// ---------- palette: ink ledger on cool paper ----------
-const C = {
-  bg: "#EDF1EC",
-  sheet: "#FBFBF6",
-  ink: "#22333B",
-  faint: "#8B9A96",
-  line: "#D8DFD7",
-  amber: "#D9950F",
-  amberSoft: "#F6E7C6",
-};
+import { C } from "./theme";
+import WeeklyChart, { RangeToggle } from "./WeeklyChart";
 
 const STORAGE_KEY = "habit-ledger-v1";
 const DAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
@@ -66,6 +58,30 @@ function weekPct(week) {
   for (const h of HABITS) s += Math.min(habitDone(week, h) / h.target, 1);
   return Math.round((s / HABITS.length) * 100);
 }
+// One point per week, oldest first, for the outcomes chart and the past-weeks list.
+// Weeks before the ledger's first record have pct null; a missed week since then scores 0.
+function buildSeries(data, monday, weekKey, count) {
+  const firstKey = Object.keys(data.weeks).sort()[0];
+  const out = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const m = addDays(monday, -7 * i);
+    const k = keyOf(m);
+    const week = normalizeWeek(data.weeks[k]);
+    const beforeStart = !firstKey || k < firstKey;
+    out.push({
+      key: k,
+      monday: m,
+      label: rangeLabel(m),
+      pct: beforeStart ? null : weekPct(week),
+      inProgress: k === weekKey,
+      habits: HABITS.map((h) => {
+        const done = habitDone(week, h);
+        return { id: h.id, name: h.name, done, target: h.target, hit: done >= h.target };
+      }),
+    });
+  }
+  return out;
+}
 
 // ---------- localStorage (replaces the Claude artifact window.storage API) ----------
 function loadData() {
@@ -94,6 +110,7 @@ export default function App() {
   const [data, setData] = useState(null); // { weeks:{}, months:{} }
   const [status, setStatus] = useState("loading"); // loading | saved | saving | error
   const [armErase, setArmErase] = useState(false);
+  const [range, setRange] = useState(12); // weeks shown in the chart + past-weeks list
   const saveTimer = useRef(null);
   const loadedRef = useRef(false);
 
@@ -159,11 +176,8 @@ export default function App() {
   const week = normalizeWeek(data.weeks[weekKey]);
   const pct = weekPct(week);
   const books = data.months[monthKey] || 0;
-  const pastWeeks = Object.keys(data.weeks)
-    .filter((k) => k !== weekKey)
-    .sort()
-    .reverse()
-    .slice(0, 8);
+  const series = buildSeries(data, monday, weekKey, range);
+  const pastWeeks = series.filter((p) => !p.inProgress && p.pct !== null).reverse();
 
   const statusText =
     status === "saving" ? "Saving…" :
@@ -305,7 +319,24 @@ export default function App() {
           </div>
         </section>
 
-        {/* ---------- past weeks ---------- */}
+        {/* ---------- range filter: scopes the chart and the past-weeks list below ---------- */}
+        <RangeToggle value={range} onChange={setRange} />
+
+        {/* ---------- weekly outcomes chart ---------- */}
+        <section style={{ background: C.sheet, border: `1px solid ${C.line}`, borderRadius: 14, marginTop: 10, padding: "14px 14px 10px" }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: "0 8px", marginBottom: 8 }}>
+            <span style={{ fontSize: 14.5, fontWeight: 600 }}>Weekly outcomes</span>
+            <span style={{ fontSize: 12, color: C.faint }}>score per week · amber line is 80%</span>
+          </div>
+          <WeeklyChart
+            series={series}
+            hint={pastWeeks.length === 0
+              ? "Your first full week files here on Monday. Tap a column for its habit-by-habit breakdown."
+              : "Tap or hover a column for its habit-by-habit breakdown."}
+          />
+        </section>
+
+        {/* ---------- past weeks (table view of the chart) ---------- */}
         <section style={{ background: C.sheet, border: `1px solid ${C.line}`, borderRadius: 14, marginTop: 14, padding: "14px 14px 6px" }}>
           <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 6 }}>Past weeks</div>
           {pastWeeks.length === 0 ? (
@@ -313,20 +344,15 @@ export default function App() {
               Finish this week and it'll be filed here — the board starts fresh every Monday on its own.
             </div>
           ) : (
-            pastWeeks.map((k) => {
-              const [y, m, d] = k.split("-").map(Number);
-              const wd = new Date(y, m - 1, d);
-              const p = weekPct(normalizeWeek(data.weeks[k]));
-              return (
-                <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: `1px solid ${C.line}` }}>
-                  <div style={{ fontSize: 12.5, color: C.faint, width: 92 }}>{rangeLabel(mondayOf(wd))}</div>
-                  <div style={{ flex: 1, height: 5, borderRadius: 3, background: C.line, overflow: "hidden" }}>
-                    <div style={{ width: `${p}%`, height: "100%", background: p >= 80 ? C.amber : C.ink }} />
-                  </div>
-                  <div className="frn" style={{ fontSize: 13, fontWeight: 650, width: 40, textAlign: "right", color: p >= 80 ? C.amber : C.ink }}>{p}%</div>
+            pastWeeks.map((p) => (
+              <div key={p.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: `1px solid ${C.line}` }}>
+                <div style={{ fontSize: 12.5, color: C.faint, width: 92 }}>{p.label}</div>
+                <div style={{ flex: 1, height: 5, borderRadius: 3, background: C.line, overflow: "hidden" }}>
+                  <div style={{ width: `${p.pct}%`, height: "100%", background: p.pct >= 80 ? C.amber : C.ink }} />
                 </div>
-              );
-            })
+                <div className="frn" style={{ fontSize: 13, fontWeight: 650, width: 40, textAlign: "right", color: p.pct >= 80 ? C.amber : C.ink }}>{p.pct}%</div>
+              </div>
+            ))
           )}
         </section>
 

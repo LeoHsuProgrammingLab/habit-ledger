@@ -2,8 +2,10 @@
 
 A weekly goal tracker (built with Claude): exercise 4×/week, Spanish daily,
 3 core papers/day, weekday Discord paper sweep, writing 3×/week, and 2 books/month.
-Weeks reset every Monday and past weeks are kept with their score. Data is saved
-in the browser's localStorage (per device).
+Weeks reset every Monday and past weeks are kept with their score. A weekly
+outcomes chart plots each week's score against the 80% "great week" line (last
+12, 26, or 52 weeks); tap or hover a column for that week's habit-by-habit
+breakdown. Data is saved in the browser's localStorage (per device).
 
 ## Run it locally
 
