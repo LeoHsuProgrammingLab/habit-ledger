@@ -111,8 +111,14 @@ export default function App() {
   const [status, setStatus] = useState("loading"); // loading | saved | saving | error
   const [armErase, setArmErase] = useState(false);
   const [range, setRange] = useState(12); // weeks shown in the chart + past-weeks list
+  const [viewBack, setViewBack] = useState(0); // 0 = this week; 1+ = weeks back (retro logging)
   const saveTimer = useRef(null);
   const loadedRef = useRef(false);
+
+  // The sheet shows and edits the viewed week; by default that's the current one.
+  const viewMonday = addDays(monday, -7 * viewBack);
+  const viewKey = keyOf(viewMonday);
+  const viewingCurrent = viewBack === 0;
 
   // ----- load once -----
   useEffect(() => {
@@ -142,12 +148,12 @@ export default function App() {
   function updateWeek(habitId, dayIdx) {
     setData((prev) => {
       const next = { ...prev, weeks: { ...prev.weeks } };
-      const week = { ...normalizeWeek(next.weeks[weekKey]) };
+      const week = { ...normalizeWeek(next.weeks[viewKey]) };
       const h = HABITS.find((x) => x.id === habitId);
       const arr = [...week[habitId]];
       arr[dayIdx] = h.type === "count" ? (Number(arr[dayIdx]) + 1) % (h.per + 1) : !arr[dayIdx];
       week[habitId] = arr;
-      next.weeks[weekKey] = week;
+      next.weeks[viewKey] = week;
       return next;
     });
   }
@@ -173,7 +179,7 @@ export default function App() {
     );
   }
 
-  const week = normalizeWeek(data.weeks[weekKey]);
+  const week = normalizeWeek(data.weeks[viewKey]);
   const pct = weekPct(week);
   const books = data.months[monthKey] || 0;
   const series = buildSeries(data, monday, weekKey, range);
@@ -198,8 +204,18 @@ export default function App() {
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
         {/* ---------- header ---------- */}
         <header style={{ marginBottom: 14 }}>
-          <div className="frn" style={{ fontSize: 30, fontWeight: 650, letterSpacing: "-0.01em", lineHeight: 1.1 }}>
-            Week of {rangeLabel(monday)}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <div className="frn" style={{ fontSize: 30, fontWeight: 650, letterSpacing: "-0.01em", lineHeight: 1.1 }}>
+              Week of {rangeLabel(viewMonday)}
+            </div>
+            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+              <button className="btn" aria-label="Previous week" disabled={viewBack >= 52}
+                onClick={() => setViewBack((v) => Math.min(52, v + 1))}
+                style={{ width: 34, height: 34, borderRadius: 10, border: `1.5px solid ${C.line}`, background: C.sheet, color: C.ink, fontSize: 17, padding: 0, cursor: viewBack >= 52 ? "default" : "pointer", opacity: viewBack >= 52 ? 0.4 : 1 }}>‹</button>
+              <button className="btn" aria-label="Next week" disabled={viewingCurrent}
+                onClick={() => setViewBack((v) => Math.max(0, v - 1))}
+                style={{ width: 34, height: 34, borderRadius: 10, border: `1.5px solid ${C.line}`, background: C.sheet, color: C.ink, fontSize: 17, padding: 0, cursor: viewingCurrent ? "default" : "pointer", opacity: viewingCurrent ? 0.4 : 1 }}>›</button>
+            </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
             <div style={{ flex: 1, height: 6, borderRadius: 3, background: C.line, overflow: "hidden" }}>
@@ -207,8 +223,18 @@ export default function App() {
             </div>
             <div className="frn" style={{ fontSize: 15, fontWeight: 650, minWidth: 42, textAlign: "right" }}>{pct}%</div>
           </div>
-          <div style={{ fontSize: 12, color: C.faint, marginTop: 6 }}>
-            Tap a day to log it · 80% is a great week
+          <div style={{ fontSize: 12, color: C.faint, marginTop: 6, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {viewingCurrent ? (
+              "Tap a day to log it · 80% is a great week"
+            ) : (
+              <>
+                <span style={{ color: C.ink, fontWeight: 600 }}>Editing a past week — taps save to it</span>
+                <button className="btn" onClick={() => setViewBack(0)}
+                  style={{ fontSize: 12, color: C.ink, background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
+                  Back to this week
+                </button>
+              </>
+            )}
           </div>
         </header>
 
@@ -217,8 +243,8 @@ export default function App() {
           {/* day strip */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", padding: "10px 14px 8px", borderBottom: `1px solid ${C.line}` }}>
             {DAY_LETTERS.map((L, i) => {
-              const d = addDays(monday, i);
-              const isToday = i === todayIdx;
+              const d = addDays(viewMonday, i);
+              const isToday = viewingCurrent && i === todayIdx;
               return (
                 <div key={i} style={{ textAlign: "center" }}>
                   <div style={{ fontSize: 11, fontWeight: isToday ? 700 : 500, color: isToday ? C.amber : C.faint }}>{L}</div>
@@ -247,8 +273,8 @@ export default function App() {
                     if (h.weekdaysOnly && i > 4) {
                       return <div key={i} aria-hidden="true" style={{ width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", color: C.line, fontSize: 13 }}>—</div>;
                     }
-                    const isToday = i === todayIdx;
-                    const future = i > todayIdx;
+                    const isToday = viewingCurrent && i === todayIdx;
+                    const future = viewingCurrent && i > todayIdx;
                     const ring = isToday ? `0 0 0 2px ${C.sheet}, 0 0 0 4px ${C.amber}` : "none";
                     if (h.type === "count") {
                       const v = Number(week[h.id][i]) || 0;
