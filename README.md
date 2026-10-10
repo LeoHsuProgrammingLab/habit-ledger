@@ -1,7 +1,8 @@
 # Habit Ledger
 
 A weekly goal tracker (built with Claude): exercise 4×/week, Spanish daily,
-3 core papers/day, weekday Discord paper sweep, writing 3×/week, and 2 books/month.
+sleep before 12:30 AM daily, 3 core papers/day, weekday Discord paper sweep,
+writing 3×/week, and 2 books/month.
 Weeks reset every Monday and past weeks are kept with their score; the ‹ ›
 arrows beside the title open a past week so you can backfill days you forgot
 to log. A weekly

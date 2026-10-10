@@ -9,6 +9,7 @@ const DAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
 const HABITS = [
   { id: "exercise", name: "Exercise", meta: "4× a week, any days", type: "toggle", target: 4 },
   { id: "spanish", name: "Spanish", meta: "every day", type: "toggle", target: 7 },
+  { id: "sleep", name: "Sleep before 12:30 AM", meta: "every day", type: "toggle", target: 7 },
   { id: "papers", name: "Core papers", meta: "3 a day · each tap logs one", type: "count", per: 3, target: 21 },
   { id: "discord", name: "Discord paper sweep", meta: "weekdays only", type: "toggle", target: 5, weekdaysOnly: true },
   { id: "writing", name: "Writing practice", meta: "3× a week, any days", type: "toggle", target: 3 },
@@ -53,10 +54,16 @@ function habitDone(week, h) {
   const arr = week[h.id] || [];
   return h.type === "count" ? arr.reduce((a, b) => a + (Number(b) || 0), 0) : arr.filter(Boolean).length;
 }
-function weekPct(week) {
+// A week is scored over the habits it was recorded with, so adding a new habit
+// later (e.g. sleep) doesn't retroactively lower weeks logged before it existed.
+function weekHabitList(raw) {
+  const tracked = HABITS.filter((h) => raw && Array.isArray(raw[h.id]) && raw[h.id].length === 7);
+  return tracked.length ? tracked : HABITS;
+}
+function weekPct(week, habits = HABITS) {
   let s = 0;
-  for (const h of HABITS) s += Math.min(habitDone(week, h) / h.target, 1);
-  return Math.round((s / HABITS.length) * 100);
+  for (const h of habits) s += Math.min(habitDone(week, h) / h.target, 1);
+  return Math.round((s / habits.length) * 100);
 }
 // One point per week, oldest first, for the outcomes chart and the past-weeks list.
 // Weeks before the ledger's first record have pct null; a missed week since then scores 0.
@@ -66,15 +73,17 @@ function buildSeries(data, monday, weekKey, count) {
   for (let i = count - 1; i >= 0; i--) {
     const m = addDays(monday, -7 * i);
     const k = keyOf(m);
-    const week = normalizeWeek(data.weeks[k]);
+    const raw = data.weeks[k];
+    const tracked = weekHabitList(raw);
+    const week = normalizeWeek(raw);
     const beforeStart = !firstKey || k < firstKey;
     out.push({
       key: k,
       monday: m,
       label: rangeLabel(m),
-      pct: beforeStart ? null : weekPct(week),
+      pct: beforeStart ? null : weekPct(week, tracked),
       inProgress: k === weekKey,
-      habits: HABITS.map((h) => {
+      habits: tracked.map((h) => {
         const done = habitDone(week, h);
         return { id: h.id, name: h.name, done, target: h.target, hit: done >= h.target };
       }),
@@ -180,7 +189,7 @@ export default function App() {
   }
 
   const week = normalizeWeek(data.weeks[viewKey]);
-  const pct = weekPct(week);
+  const pct = weekPct(week, weekHabitList(data.weeks[viewKey]));
   const books = data.months[monthKey] || 0;
   const series = buildSeries(data, monday, weekKey, range);
   const pastWeeks = series.filter((p) => !p.inProgress && p.pct !== null).reverse();
